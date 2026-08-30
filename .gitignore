@@ -1,0 +1,29 @@
+# Python bytecode caches
+__pycache__/
+*.pyc
+*.pyo
+
+# uv / venv
+.venv/
+
+# Env secrets
+.env
+
+# Hugging Face / torch model download caches, if ever pointed locally
+.cache/
+*.pt
+*.bin
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# pytest
+.pytest_cache/
+
+# Storyscript
+.specstory/
+
