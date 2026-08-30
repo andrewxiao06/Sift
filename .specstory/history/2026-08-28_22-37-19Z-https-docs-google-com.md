@@ -814,3 +814,600 @@ CREATE EXTENSION vector;
 That's a one-time, database-level operation — it tells *this specific Postgres database* (`sift`) "make the `vector` type and index methods available," similar to installing a plugin into the database itself. It's not Python code and it doesn't live in any file in your repo; it's now just a permanent property of the `sift` database until someone drops the extension.
 
 `db.py` will still need code later, but for a different purpose: SQLAlchemy models that *use* the vector type once it's enabled — e.g. a papers table with a column typed as a vector for the embedding, using pgvector's SQLAlchemy integration. That's the retrieval-adjacent DB plumbing (fine for me to write, per your working agreement) — but it's separate from the one-time `CREATE EXTENSION` step, which only ever needs to happen once per database, not on every app startup.
+
+---
+
+_**User (2026-08-28 22:50:22Z)**_
+
+confused, i got a email from vercel, is phase 2 supposed to be going online on vercel?
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-28 22:50:29Z)**_
+
+I haven't touched Vercel at all this session — no deploy has happened, and per the working agreement Phase 2 (which is when Vercel comes in) is gated behind Phase 1's full checklist being done, which is weeks away. Right now we're still at the empty-skeleton stage.
+
+So that email almost certainly isn't from anything I did here. A few possibilities:
+
+- A generic Vercel account email unrelated to Sift (welcome/verification email if you don't already have a Vercel account, a billing notice, a security alert, etc.)
+- Leftover from a previous unrelated project on your Vercel account
+
+What does the email actually say (subject line / gist)? That'll tell us whether it's something to worry about or just noise you can ignore.
+
+---
+
+_**User (2026-08-28 22:50:49Z)**_
+
+Hello, yoyostring.
+
+We detected a new repository in andrewxiao06/Sift that is ready to import and deploy on Vercel.
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-28 22:50:57Z)**_
+
+That makes sense now — it means you (or something) already pushed this repo to GitHub as `andrewxiao06/Sift`. Vercel has a GitHub integration installed on your account that auto-scans for new repos and sends this "ready to import" nudge automatically — it's not something triggered by me, and nothing has actually been imported or deployed. It's just an invite, not an action.
+
+Given the working agreement (no web/ or Vercel deploy until Phase 1's definition of done is checked), you can safely ignore that email for now — don't click "Import." Nothing bad happens if you leave it; Vercel will just keep the repo listed as importable whenever you're ready in Phase 2.
+
+Quick check on my end — did you already run `git init` and push to GitHub yourself? If so, good, that was on your list. If you're not sure how that repo got there, let me know and I can check `git remote -v` / `git log` locally to see what's been pushed.
+
+---
+
+_**User (2026-08-29 21:16:36Z)**_
+
+ok lets continue lets start building
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-29 21:16:53Z)**_
+
+Given the working agreement's write boundaries, here's the logical build order and who does what:
+
+1. **Ingest pipeline** (`app/ingest/arxiv_client.py`, `normalize.py`) + **DB models** (`app/models/db.py`) — plumbing, I write this. Gets ~2,000 papers into your `sift` Postgres DB.
+2. **`app/config.py`** — I write this (connection string, model names, device="mps").
+3. **`app/models/encoders.py`** (the hand-written mean-pooling embedding path) — this is on your "I write this myself" list. I can't touch it.
+4. Week 1's naive-dense baseline needs embeddings to exist, which needs step 3 done by you.
+
+_**Agent (claude-sonnet-5 2026-08-29 21:19:24Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**Where should I start building right now?**
+
+Options:
+- **Ingest + DB models (Recommended)** - I write app/ingest/arxiv_client.py, normalize.py, app/models/db.py, and app/config.py — gets ~2,000 papers loaded into your local sift Postgres DB. Unblocks everything else.
+- **Wait — walk me through encoders.py first** - Since I can't write the embedding path myself, explain mean-pooling/tokenize/forward/normalize concepts so you can write it, before touching anything else.
+
+
+**Answer:** Ingest + DB models (Recommended)
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:19:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check pgvector SQLAlchemy integration and whether the arxiv package is installed
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "from pgvector.sqlalchemy import Vector; print('ok')"
+uv run python -c "import arxiv" 2>&1 | tail -5
+```
+
+```text
+ok
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import arxiv
+ModuleNotFoundError: No module named 'arxiv'
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:19:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add the arxiv Python package for talking to the arXiv API
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv add arxiv
+```
+
+```text
+Resolved 98 packages in 321ms
+Downloading lxml (8.2MiB)
+ Downloaded lxml
+Prepared 5 packages in 189ms
+Installed 5 packages in 4ms
+ + arxiv==4.0.1
+ + charset-normalizer==3.5.1
+ + lxml==6.1.2
+ + requests==2.34.2
+ + urllib3==2.7.0
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:19:50Z)**_
+
+Now writing config, DB models, and the ingest pipeline.
+
+_**Agent (claude-sonnet-5 2026-08-29 21:19:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""Hardcoded project config. No settings framework — see CLAUDE.md ship-fast rules."""
+
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql+psycopg://andrewxiao@localhost:5432/sift"
+)
+
+# arXiv corpus scope — see docs/SPEC.md section 4
+ARXIV_CATEGORIES = ["cs.IR", "cs.CL"]
+ARXIV_MAX_RESULTS = 2000
+ARXIV_MONTHS_BACK = 24
+
+# Models — see docs/SPEC.md section 3
+EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBEDDING_DIM = 384
+CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# MPS only — no CUDA path, see CLAUDE.md environment section
+DEVICE = "mps"
+
+# Retrieval defaults
+DEFAULT_TOP_K = 10
+RERANK_TOP_N = 100
+
+# Agent
+AGENT_MODEL = "claude-sonnet-5"
+AGENT_MAX_ITERATIONS = 6
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
+```
+
+```text
+File created successfully at: /Users/andrewxiao/Documents/projects/Sift/app/config.py (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""SQLAlchemy engine, session, and the Paper table model."""
+
+from datetime import datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import ARRAY, DateTime, String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+from app.config import DATABASE_URL, EMBEDDING_DIM
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Paper(Base):
+    __tablename__ = "papers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    arxiv_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String)
+    abstract: Mapped[str] = mapped_column(String)
+    authors: Mapped[list[str]] = mapped_column(ARRAY(String))
+    categories: Mapped[list[str]] = mapped_column(ARRAY(String))
+    published: Mapped[datetime] = mapped_column(DateTime)
+    updated: Mapped[datetime] = mapped_column(DateTime)
+    pdf_url: Mapped[str] = mapped_column(String)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+
+
+def init_db() -> None:
+    Base.metadata.create_all(engine)
+
+
+def get_session() -> Session:
+    return SessionLocal()
+
+```
+
+```text
+File created successfully at: /Users/andrewxiao/Documents/projects/Sift/app/models/db.py (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:22Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""Fetches paper metadata from the arXiv API and upserts it into Postgres."""
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+
+import arxiv
+from sqlalchemy.dialects.postgresql import insert
+
+from app.config import ARXIV_CATEGORIES, ARXIV_MAX_RESULTS, ARXIV_MONTHS_BACK
+from app.ingest.normalize import normalize
+from app.models.db import Paper, get_session
+
+_client = arxiv.Client(page_size=100, delay_seconds=3.0, num_retries=3)
+
+
+def fetch_papers(
+    categories: list[str] = ARXIV_CATEGORIES,
+    max_results: int = ARXIV_MAX_RESULTS,
+    months_back: int = ARXIV_MONTHS_BACK,
+) -> Iterator[arxiv.Result]:
+    """Yields arXiv results in the given categories, newest first, stopping once
+    results fall outside the months_back window (results are sorted by date so
+    this avoids paging through the entire category history).
+    """
+    query = " OR ".join(f"cat:{c}" for c in categories)
+    cutoff = datetime.now(UTC) - timedelta(days=30 * months_back)
+
+    search = arxiv.Search(
+        query=query,
+        max_results=max_results,
+        sort_by=arxiv.SortCriterion.SubmittedDate,
+        sort_order=arxiv.SortOrder.Descending,
+    )
+
+    for result in _client.results(search):
+        if result.published < cutoff:
+            break
+        yield result
+
+
+def ingest(
+    categories: list[str] = ARXIV_CATEGORIES,
+    max_results: int = ARXIV_MAX_RESULTS,
+    months_back: int = ARXIV_MONTHS_BACK,
+) -> int:
+    """Fetches, normalizes, and upserts papers by arxiv_id. Returns count written."""
+    session = get_session()
+    count = 0
+    try:
+        for result in fetch_papers(categories, max_results, months_back):
+            record = normalize(result)
+            stmt = insert(Paper).values(**record)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["arxiv_id"],
+                set_={
+                    "title": stmt.excluded.title,
+                    "abstract": stmt.excluded.abstract,
+                    "authors": stmt.excluded.authors,
+                    "categories": stmt.excluded.categories,
+                    "updated": stmt.excluded.updated,
+                    "pdf_url": stmt.excluded.pdf_url,
+                },
+            )
+            session.execute(stmt)
+            count += 1
+            if count % 100 == 0:
+                session.commit()
+        session.commit()
+    finally:
+        session.close()
+    return count
+
+```
+
+```text
+File created successfully at: /Users/andrewxiao/Documents/projects/Sift/app/ingest/arxiv_client.py (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""Converts a raw arxiv.Result into the record shape stored in the papers table."""
+
+import re
+
+import arxiv
+
+_VERSION_SUFFIX = re.compile(r"v\d+$")
+
+
+def strip_version(arxiv_id: str) -> str:
+    return _VERSION_SUFFIX.sub("", arxiv_id)
+
+
+def normalize(result: arxiv.Result) -> dict:
+    return {
+        "arxiv_id": strip_version(result.get_short_id()),
+        "title": result.title.strip(),
+        "abstract": result.summary.strip(),
+        "authors": [author.name for author in result.authors],
+        "categories": list(result.categories),
+        "published": result.published,
+        "updated": result.updated,
+        "pdf_url": result.pdf_url,
+    }
+
+```
+
+```text
+File created successfully at: /Users/andrewxiao/Documents/projects/Sift/app/ingest/normalize.py (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:29Z)**_
+
+Now let's smoke-test the pipeline end-to-end with a small fetch before running the full ~2,000-paper ingest.
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Create the papers table in the sift database
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "
+from app.models.db import init_db
+init_db()
+print('tables created')
+"
+```
+
+```text
+tables created
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Smoke-test ingesting 5 papers end to end
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "
+from app.ingest.arxiv_client import ingest
+n = ingest(max_results=5, months_back=24)
+print('ingested', n)
+"
+```
+
+```text
+ingested 5
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify the 5 ingested papers landed correctly in Postgres
+
+`psql -d sift -c "SELECT arxiv_id, title, categories, published FROM papers;"`
+
+```text
+  arxiv_id  |                                             title                                             |     categories      |      published      
+------------+-----------------------------------------------------------------------------------------------+---------------------+---------------------
+ 2608.27455 | CritICL: Inference-Time Weak-to-Strong Generalization from Small Language Model Failure Modes | {cs.CL}             | 2026-08-27 13:59:30
+ 2608.27454 | WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution           | {cs.AI,cs.CL}       | 2026-08-27 13:59:11
+ 2608.27449 | SWE-Prime: Fewer Trajectories, Better Performance                                             | {cs.SE,cs.AI,cs.CL} | 2026-08-27 13:58:10
+ 2608.27448 | TTPO: Test-Time Policy Optimization                                                           | {cs.CL}             | 2026-08-27 13:58:10
+ 2608.27442 | From Static to Dynamic: Benchmarking Real-World Code Review with MCR-Bench                    | {cs.SE,cs.AI,cs.CL} | 2026-08-27 13:56:24
+(5 rows)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 21:20:47Z)**_
+
+End-to-end pipeline works: arXiv → normalize → Postgres, with real recent papers, correct categories and upsert-by-arxiv_id logic.
+
+**What's built and verified:**
+- `app/config.py` — DB URL, category scope, model names, MPS device, agent defaults
+- `app/models/db.py` — `papers` table (arxiv_id, title, abstract, authors, categories, dates, pdf_url, nullable `embedding` vector(384) column ready for pgvector once you write the encoder)
+- `app/ingest/arxiv_client.py` — fetches by category, sorted newest-first, stops once past the 24-month window, upserts on `arxiv_id`
+- `app/ingest/normalize.py` — strips version suffixes, maps arxiv.Result → your schema
+
+**Next steps, your call:**
+
+_**Agent (claude-sonnet-5 2026-08-29 22:03:54Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**What next?**
+
+Options:
+- **Run the full ~2,000-paper ingest now (Recommended)** - Clear the 5 test rows and ingest the real corpus (cs.IR + cs.CL, 24 months) so the DB is ready for Week 1's grading and baselines. Takes a few minutes given arXiv rate limits.
+- **Start encoders.py walkthrough instead** - Hold off on the full ingest; I explain mean-pooling/tokenize/forward/normalize concepts so you can write app/models/encoders.py yourself.
+
+
+**Answer:** Run the full ~2,000-paper ingest now (Recommended)
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 22:04:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Clear the 5 test rows before the full ingest
+
+`psql -d sift -c "TRUNCATE papers;"`
+
+```text
+TRUNCATE TABLE
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 22:04:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Run the full ~2000-paper ingest for cs.IR and cs.CL over the last 24 months
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "
+from app.ingest.arxiv_client import ingest
+n = ingest()
+print('ingested', n)
+"
+```
+
+```text
+Command running in background with ID: bbeeysp37. Output is being written to: /private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bbeeysp37.output. You will be notified when it completes. To check interim output, use Read on that file path.
+Session cwd remains /Users/andrewxiao/Documents/projects/Sift; directory changes made by the backgrounded command do not apply to subsequent commands.
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 22:04:13Z)**_
+
+The full ingest is running in the background (arXiv rate-limits requests, so this'll take a few minutes for ~2,000 papers across cs.IR + cs.CL). I'll let you know when it finishes.
+
+---
+
+_**User (2026-08-29 22:05:17Z)**_
+
+<task-notification>
+<task-id>bbeeysp37</task-id>
+<tool-use-id>toolu_01YLzYqjgRsUg3UXqzeBEzP9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bbeeysp37.output</output-file>
+<status>completed</status>
+<summary>Background command "Run the full ~2000-paper ingest for cs.IR and cs.CL over the last 24 months" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-29 22:05:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check ingest output and verify papers landed in the database
+
+```bash
+cat /private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bbeeysp37.output
+echo "---"
+psql -d sift -c "SELECT count(*), min(published), max(published) FROM papers;"
+psql -d sift -c "SELECT unnest(categories) as cat, count(*) FROM papers GROUP BY cat ORDER BY count(*) DESC LIMIT 10;"
+```
+
+```text
+ingested 2000
+
+[exited with code 0]
+---
+ count |         min         |         max         
+-------+---------------------+---------------------
+  2000 | 2026-08-03 11:53:49 | 2026-08-27 13:59:30
+(1 row)
+
+  cat  | count 
+-------+-------
+ cs.CL |  1725
+ cs.AI |   832
+ cs.LG |   432
+ cs.IR |   372
+ cs.CV |   135
+ cs.CY |    67
+ cs.HC |    61
+ cs.CR |    60
+ cs.SE |    41
+ cs.MA |    38
+(10 rows)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-29 22:05:57Z)**_
+
+Ingest finished — 2,000 papers landed — but there's a problem worth flagging before we move on: **it's not actually a 24-month corpus.** The date range is Aug 3–27, 2026 — just 24 days, not 24 months.
+
+**Why:** cs.CL is a very high-volume category (1,725 of the 2,000 papers are cs.CL). My `fetch_papers` function set `max_results=2000` directly on the arXiv API query, sorted newest-first, and only checked the 24-month cutoff *after* results came back. Since cs.CL/cs.AI alone produce >2,000 papers in under a month, the 2,000 cap was hit almost immediately — the cutoff check never got a chance to matter.
+
+This is a real design decision, not a bug I can just silently fix one way:
+
+- **Option A — most recent ~2,000 papers, whatever timespan that covers** (currently ~3.5 weeks). Simplest, matches "recent work" framing, but "last 24 months" in the spec becomes misleading/inaccurate.
+- **Option B — genuinely span the full 24 months**, e.g. by evenly sampling per-month or per-quarter across the window so older papers are represented too, capped at ~2,000 total. Matches the spec's literal wording, more representative corpus, but a bit more ingest logic and slower (more API calls across the date range).
+
+Which do you want? (This also determines what "recent" vs "older" queries in your Week 1 query set will even find, so worth deciding before you write those 40 queries.)
+
+---
+
+_**User (2026-08-29 22:07:17Z)**_
+
+i think its fine, as long as the papers are accurate which is what we use the LLM for correct? i'm not sure exactly how to fetch teh papers through a specific filter that is good, but newer should be accurate right? you let me know with another opinion
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-29 22:07:31Z)**_
+
+Good question to raise, and I think there's a mix-up worth untangling: **corpus freshness doesn't affect accuracy.** All arXiv papers are "real" — a 2020 paper is just as accurate as one from last week. Freshness only matters for whether papers are *on the retrieval-quality frontier* (cutting-edge results) or *foundational* (older, established ideas). The LLM/agent doesn't use the corpus to verify facts — it uses the corpus as the pool of documents your retrieval pipeline searches over. Accuracy is a property of arXiv papers themselves (peer-reviewed or not, that's a separate concern entirely), not something affected by when they were published.
+
+The real problem is more direct: **look at your own spec's example queries.** Section 5.1 lists `"ColBERT late interaction"` as a named-entity query — but ColBERT is a 2020 paper. If your corpus only covers the last 24 days, that paper (and anything like it) literally cannot exist in your database, so that query would return zero relevant results no matter how good your retrieval code is. That's not a retrieval failure, it's a corpus-coverage failure, and it'd make your whole Week 1 baseline measurement meaningless for that query type.
+
+My opinion: **go with Option B — span the full 24 months.** Recency isn't actually a goal here; representativeness is. I'll change the ingest to sample across the whole window (e.g., pull a slice per month or quarter) instead of just grabbing the newest 2,000, so both old foundational papers and recent ones are in the pool your 40 queries get graded against.
+
+Want me to make that change and re-run the ingest?
+
+---
+
+_**User (2026-08-29 23:12:34Z)**_
+
+explain everything youve done so far
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-29 23:12:52Z)**_
+
+Here's a full recap of everything so far, in order.
+
+## 1. Read the project spec
+I pulled both Google Docs you linked — the full **Sift spec** (retrieval + agent architecture, corpus scope, week-by-week plan) and the **CLAUDE.md working agreement** (rules for what I can/can't write). I saved the key facts as persistent memory so future sessions on this project remember them without you re-explaining.
+
+## 2. Created the empty project skeleton
+Built out the full folder/file structure from the spec's repo layout — `app/{api,ingest,retrieval,extraction,agent,models}`, `prompts/`, `eval/`, `results/`, `tests/`, `docs/`, plus root files (`README.md`, `CLAUDE.md`, `Makefile`, `Dockerfile`, `pyproject.toml`, `.env.example`, `.gitignore`). Everything was empty at this stage — just structure. I deliberately skipped `web/` since the working agreement says nothing touches the frontend until Phase 1 is fully done.
+
+## 3. Set up Python tooling
+You chose `uv` as the package manager. I initialized `pyproject.toml` and installed the core dependencies: fastapi, uvicorn, pydantic, sqlalchemy, psycopg, pgvector, torch, transformers, sentence-transformers, rank-bm25, numpy, anthropic, python-dotenv, arxiv, plus pytest as a dev dependency. Confirmed torch's MPS backend works on your M3.
+
+## 4. Set up the database
+Postgres wasn't running at all — no server, no database. I:
+- Started Postgres 18 as a background service (`brew services start postgresql@18`), so it auto-runs going forward
+- Created a database named `sift`
+- Enabled the `pgvector` extension inside it (`CREATE EXTENSION vector`) — a one-time SQL command, not code in any file
+
+## 5. Wrote the ingestion pipeline (my responsibility per the working agreement — this is "plumbing," not the learning surface)
+- **`app/config.py`** — hardcoded settings: DB URL, category scope, model names, `device="mps"`, agent defaults
+- **`app/models/db.py`** — SQLAlchemy setup + the `papers` table (arxiv_id, title, abstract, authors, categories, dates, pdf_url, and a nullable `embedding` vector(384) column that stays empty until you write the encoder)
+- **`app/ingest/arxiv_client.py`** — fetches papers from the arXiv API by category, sorted newest-first, upserts into Postgres
+- **`app/ingest/normalize.py`** — converts raw arXiv API results into that table's row shape
+
+I ran the actual table creation and smoke-tested the pipeline with 5 papers to confirm it worked end to end before trusting it with the real run.
+
+## 6. Ran the full ingest — and found a real problem
+Ran it for real: 2,000 papers landed in Postgres. But checking the dates revealed they all came from a 24-day window, not the 24 months the spec calls for. Cause: cs.CL alone produces >2,000 papers in under a month, so the hard 2,000-result cap on the API query got hit long before the 24-month cutoff logic ever kicked in.
+
+I flagged this rather than silently accepting or silently fixing it, because it's a real design choice with a tradeoff — and I gave you my opinion just now: your own spec's example query ("ColBERT late interaction," a 2020 paper) can't be evaluated meaningfully against a corpus that's 24 days deep. So the corpus needs to span the full 24 months, sampled across that range, not just be the newest 2,000.
+
+## Where we are now
+Waiting on you to confirm: should I change the ingest to sample across the full 24-month window (instead of newest-first) and re-run it? That's the next concrete action — everything else (Week 1 query writing, `encoders.py`, retrieval code) is downstream of having the right corpus in place.
