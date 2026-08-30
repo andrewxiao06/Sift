@@ -4,13 +4,25 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import arxiv
-from sqlalchemy.dialects.postgresql import insert
 
 from app.config import ARXIV_CATEGORIES, ARXIV_MAX_RESULTS, ARXIV_MONTHS_BACK
 from app.ingest.normalize import normalize
-from app.models.db import Paper, get_session
+from app.models.db import get_connection
 
 _client = arxiv.Client(page_size=100, delay_seconds=3.0, num_retries=3)
+
+UPSERT_SQL = """
+INSERT INTO papers (arxiv_id, title, abstract, authors, categories, published, updated, pdf_url)
+VALUES (%(arxiv_id)s, %(title)s, %(abstract)s, %(authors)s, %(categories)s,
+        %(published)s, %(updated)s, %(pdf_url)s)
+ON CONFLICT (arxiv_id) DO UPDATE SET
+    title = EXCLUDED.title,
+    abstract = EXCLUDED.abstract,
+    authors = EXCLUDED.authors,
+    categories = EXCLUDED.categories,
+    updated = EXCLUDED.updated,
+    pdf_url = EXCLUDED.pdf_url;
+"""
 
 
 def fetch_papers(
@@ -44,28 +56,17 @@ def ingest(
     months_back: int = ARXIV_MONTHS_BACK,
 ) -> int:
     """Fetches, normalizes, and upserts papers by arxiv_id. Returns count written."""
-    session = get_session()
+    conn = get_connection()
     count = 0
     try:
-        for result in fetch_papers(categories, max_results, months_back):
-            record = normalize(result)
-            stmt = insert(Paper).values(**record)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["arxiv_id"],
-                set_={
-                    "title": stmt.excluded.title,
-                    "abstract": stmt.excluded.abstract,
-                    "authors": stmt.excluded.authors,
-                    "categories": stmt.excluded.categories,
-                    "updated": stmt.excluded.updated,
-                    "pdf_url": stmt.excluded.pdf_url,
-                },
-            )
-            session.execute(stmt)
-            count += 1
-            if count % 100 == 0:
-                session.commit()
-        session.commit()
+        with conn.cursor() as cur:
+            for result in fetch_papers(categories, max_results, months_back):
+                record = normalize(result)
+                cur.execute(UPSERT_SQL, record)
+                count += 1
+                if count % 100 == 0:
+                    conn.commit()
+        conn.commit()
     finally:
-        session.close()
+        conn.close()
     return count

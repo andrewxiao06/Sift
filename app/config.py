@@ -6,9 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+psycopg://andrewxiao@localhost:5432/sift"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://andrewxiao@localhost:5432/sift")
 
 # arXiv corpus scope — see docs/SPEC.md section 4
 ARXIV_CATEGORIES = ["cs.IR", "cs.CL"]

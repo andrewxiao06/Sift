@@ -1411,3 +1411,426 @@ I flagged this rather than silently accepting or silently fixing it, because it'
 
 ## Where we are now
 Waiting on you to confirm: should I change the ingest to sample across the full 24-month window (instead of newest-first) and re-run it? That's the next concrete action — everything else (Week 1 query writing, `encoders.py`, retrieval code) is downstream of having the right corpus in place.
+
+---
+
+_**User (2026-08-30 02:40:58Z)**_
+
+just wondering why use sqlalchemy? is it standard is it good to have because of the way its formatted?
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-30 02:41:10Z)**_
+
+Yes, it's the standard choice in the Python/FastAPI world — it's explicitly named in your own spec's tech stack (section 3: "SQLAlchemy" listed under Backend), so this wasn't me picking a random library, just implementing what was already decided.
+
+**Why it's good here specifically:**
+
+1. **Schema as Python, not raw SQL strings.** The `Paper` class in `db.py` *is* the table definition — columns, types, constraints all declared once. `Base.metadata.create_all(engine)` then generates the actual `CREATE TABLE` SQL for you. You're not hand-writing DDL and hoping your Python code matches it.
+2. **Type safety.** `Mapped[str]`, `Mapped[list[str]]`, `Mapped[datetime]` — your editor and type checker know what a `Paper` object's fields actually are, instead of everything being an untyped tuple/dict from a raw cursor.
+3. **pgvector integration.** This is the concrete reason it mattered for Sift: `pgvector.sqlalchemy.Vector` plugs directly into SQLAlchemy's type system, so the `embedding` column is just another typed column, not a separate thing you manage with raw SQL alongside the rest of the schema.
+4. **It's not an ORM you're fighting.** For a project with one main table and a few simple queries, SQLAlchemy's "core" usage (like the `insert(...).on_conflict_do_update(...)` upsert in `arxiv_client.py`) stays close to actual SQL — you're not buried in abstraction, just avoiding string-formatting SQL by hand.
+
+**The honest tradeoff:** for a project this size, raw `psycopg` + hand-written SQL would work fine too and is arguably *more* transparent about what's actually hitting the database — some would call SQLAlchemy overkill for one table. But since pgvector's SQLAlchemy integration is genuinely the cleanest way to get a vector column with proper typing, and it's already what your spec calls for, there's no real reason to swap it out.
+
+---
+
+_**User (2026-08-30 02:41:23Z)**_
+
+can we do raw sql?
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-30 02:41:41Z)**_
+
+Yes, absolutely possible — SQLAlchemy isn't on your "must write yourself" list, so this is purely a style/tooling choice, not a learning-boundary issue.
+
+Quick heads up before I do it: this reverses something your own spec explicitly named (section 3 lists SQLAlchemy in the stack), so worth being deliberate about, not just quietly swapping it.
+
+**What raw SQL looks like here:** using `psycopg` directly — you write actual `CREATE TABLE` / `INSERT` / `SELECT` strings, `psycopg` handles connection pooling and parameter binding. pgvector has a raw-SQL path too (`pgvector.psycopg.register_vector`), so the embedding column isn't blocked.
+
+**Tradeoff, honestly:**
+- **Raw SQL pro:** more transparent — you see exactly what hits Postgres, no ORM abstraction between you and the query. For a project about *explaining your system in an interview*, "I wrote the SQL" is a fine, defensible answer too.
+- **Raw SQL con:** you hand-maintain schema (`CREATE TABLE` statements) separately from any Python representation of a row, and manual upserts (`ON CONFLICT DO UPDATE`) get more verbose without SQLAlchemy's query builder.
+
+Given `db.py` is only ~30 lines right now and this is genuinely your call, want me to go ahead and rewrite `app/models/db.py` and the insert logic in `arxiv_client.py` to use raw `psycopg` + SQL instead, and drop the `sqlalchemy` dependency? Or keep SQLAlchemy for the schema/upsert convenience and only reach for raw SQL later for actual retrieval queries (which is often where people mix approaches — ORM for CRUD, raw SQL for hand-tuned search queries)?
+
+---
+
+_**User (2026-08-30 02:42:48Z)**_
+
+just use raw sql i think its good to have some diversity in some projects. i'll use raw sql precisely because of that reason its just easier to implement and there's not a whole ton of data needing to be stored each time (if im correct) 
+
+thing is if the user prompts multiple times i'm not sure what the response should be
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-30 02:43:21Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/andrewxiao/Documents/projects/Sift/app/config.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:43:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""Raw SQL database access via psycopg. No ORM by choice."""
+
+import psycopg
+from pgvector.psycopg import register_vector
+
+from app.config import DATABASE_URL, EMBEDDING_DIM
+
+CREATE_TABLE_SQL = f"""
+CREATE TABLE IF NOT EXISTS papers (
+    id SERIAL PRIMARY KEY,
+    arxiv_id TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    abstract TEXT NOT NULL,
+    authors TEXT[] NOT NULL,
+    categories TEXT[] NOT NULL,
+    published TIMESTAMPTZ NOT NULL,
+    updated TIMESTAMPTZ NOT NULL,
+    pdf_url TEXT NOT NULL,
+    embedding VECTOR({EMBEDDING_DIM})
+);
+"""
+
+
+def get_connection() -> psycopg.Connection:
+    conn = psycopg.connect(DATABASE_URL)
+    register_vector(conn)
+    return conn
+
+
+def init_db() -> None:
+    with get_connection() as conn:
+        conn.execute(CREATE_TABLE_SQL)
+        conn.commit()
+
+```
+
+```text
+The file /Users/andrewxiao/Documents/projects/Sift/app/models/db.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:43:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```python
+"""Fetches paper metadata from the arXiv API and upserts it into Postgres."""
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+
+import arxiv
+
+from app.config import ARXIV_CATEGORIES, ARXIV_MAX_RESULTS, ARXIV_MONTHS_BACK
+from app.ingest.normalize import normalize
+from app.models.db import get_connection
+
+_client = arxiv.Client(page_size=100, delay_seconds=3.0, num_retries=3)
+
+UPSERT_SQL = """
+INSERT INTO papers (arxiv_id, title, abstract, authors, categories, published, updated, pdf_url)
+VALUES (%(arxiv_id)s, %(title)s, %(abstract)s, %(authors)s, %(categories)s,
+        %(published)s, %(updated)s, %(pdf_url)s)
+ON CONFLICT (arxiv_id) DO UPDATE SET
+    title = EXCLUDED.title,
+    abstract = EXCLUDED.abstract,
+    authors = EXCLUDED.authors,
+    categories = EXCLUDED.categories,
+    updated = EXCLUDED.updated,
+    pdf_url = EXCLUDED.pdf_url;
+"""
+
+
+def fetch_papers(
+    categories: list[str] = ARXIV_CATEGORIES,
+    max_results: int = ARXIV_MAX_RESULTS,
+    months_back: int = ARXIV_MONTHS_BACK,
+) -> Iterator[arxiv.Result]:
+    """Yields arXiv results in the given categories, newest first, stopping once
+    results fall outside the months_back window (results are sorted by date so
+    this avoids paging through the entire category history).
+    """
+    query = " OR ".join(f"cat:{c}" for c in categories)
+    cutoff = datetime.now(UTC) - timedelta(days=30 * months_back)
+
+    search = arxiv.Search(
+        query=query,
+        max_results=max_results,
+        sort_by=arxiv.SortCriterion.SubmittedDate,
+        sort_order=arxiv.SortOrder.Descending,
+    )
+
+    for result in _client.results(search):
+        if result.published < cutoff:
+            break
+        yield result
+
+
+def ingest(
+    categories: list[str] = ARXIV_CATEGORIES,
+    max_results: int = ARXIV_MAX_RESULTS,
+    months_back: int = ARXIV_MONTHS_BACK,
+) -> int:
+    """Fetches, normalizes, and upserts papers by arxiv_id. Returns count written."""
+    conn = get_connection()
+    count = 0
+    try:
+        with conn.cursor() as cur:
+            for result in fetch_papers(categories, max_results, months_back):
+                record = normalize(result)
+                cur.execute(UPSERT_SQL, record)
+                count += 1
+                if count % 100 == 0:
+                    conn.commit()
+        conn.commit()
+    finally:
+        conn.close()
+    return count
+
+```
+
+```text
+The file /Users/andrewxiao/Documents/projects/Sift/app/ingest/arxiv_client.py has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:43:36Z)**_
+
+Now dropping the unused SQLAlchemy dependency and testing the raw SQL path:
+
+_**Agent (claude-sonnet-5 2026-08-30 02:43:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Remove SQLAlchemy dependency and verify raw psycopg connection works against existing data
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv remove sqlalchemy
+echo "---"
+uv run python -c "
+from app.models.db import init_db, get_connection
+init_db()
+with get_connection() as conn:
+    print(conn.execute('SELECT count(*) FROM papers').fetchone())
+"
+```
+
+```text
+Resolved 96 packages in 243ms
+Uninstalled 1 package in 39ms
+ - sqlalchemy==2.0.52
+---
+(2000,)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Smoke-test the raw SQL upsert path with a small ingest
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "
+from app.ingest.arxiv_client import ingest
+n = ingest(max_results=3, months_back=24)
+print('upserted', n)
+"
+```
+
+```text
+Command did not complete within its 30s timeout and was moved to the background (ID: bek3kd19v). Output is being written to: /private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bek3kd19v.output. You will be notified when it completes. To check interim output, use Read on that file path.
+Session cwd remains /Users/andrewxiao/Documents/projects/Sift; directory changes made by the backgrounded command do not apply to subsequent commands.
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:18Z)**_
+
+Migration to raw SQL is done — `db.py` and `arxiv_client.py` now use `psycopg` directly with parameterized `INSERT ... ON CONFLICT` upserts, no ORM. The smoke test's still running in the background (arXiv rate-limiting), I'll confirm once it lands.
+
+On your other question — I want to make sure I answer the right thing. "If the user prompts multiple times" could mean a couple of different things:
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:30Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**What did you mean by "if the user prompts multiple times"?**
+
+Options:
+- **Sift's agent handling follow-up questions** - In Week 3's agent (app/agent/loop.py), how should it behave if someone asks a second/third question in the same session — does it remember prior context, reset iteration count, etc.
+- **The /api/search or /api/agent/query endpoint** - If the same HTTP endpoint gets hit repeatedly (e.g. a user typing several searches in the web UI), what should the API's behavior/response be each time.
+- **Something else entirely** - Not about Sift's agent/API design — I'll clarify.
+
+
+**Answer:** Sift's agent handling follow-up questions
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:48Z)**_
+
+Good — that clears it up. Here's the concept (no code, since `app/agent/loop.py` is on your list):
+
+**The spec doesn't actually build a multi-turn chat agent.** Look at the route skeleton again:
+
+```
+POST /api/agent/query
+  body: { question, max_iterations? }
+  resp: { answer, citations[], trace[], usage{} }
+```
+
+Each call is **one question in, one final answer out** — completely stateless between calls. There's no "remember what I asked five minutes ago" built into Phase 1's design at all.
+
+What *does* happen multiple times is something different: **within a single question**, the agent can call its tools up to 6 times before it has to stop and answer (`AGENT_MAX_ITERATIONS = 6` in your config). That's not "the user prompting multiple times" — that's the agent internally deciding "I need another search" repeatedly to answer *one* question. E.g., someone asks "how do sparse and dense retrieval compare on precision," and the agent might call `search_papers` twice (once per approach) and `compare_papers` once, all before returning a single answer — that's 3 iterations, one user prompt.
+
+So if by "user prompts multiple times" you meant **separate follow-up questions** (like a real chat — "tell me more about paper X" after getting an answer), that's **new scope beyond your current spec**. It's not in the non-goals list explicitly, but it's also not designed for — you'd need to decide: does each new question start a completely fresh 6-iteration budget with no memory of the last question, or does conversation history get passed back in as context on each call (heavier: more tokens, and prior citations could get stale)?
+
+My take: **don't build this now.** Phase 1's definition of done doesn't require it, and the working agreement says nothing gets added that isn't required for the headline number. Keep the agent stateless, one-question-one-answer, for the Week 3/4 eval. If you want conversational follow-ups later, that's a legitimate Phase 2+ extension, worth its own design decision rather than something to bolt on now.
+
+---
+
+_**User (2026-08-30 02:44:48Z)**_
+
+<task-notification>
+<task-id>bek3kd19v</task-id>
+<tool-use-id>toolu_01KeyAhxZjxqo2poitNzw9Py</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bek3kd19v.output</output-file>
+<status>failed</status>
+<summary>Background command "Smoke-test the raw SQL upsert path with a small ingest" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check why the raw SQL smoke test failed
+
+`cat /private/tmp/claude-501/-Users-andrewxiao-Documents-projects-Sift/49866a91-0fd7-46e1-a905-7b03ad31e3aa/tasks/bek3kd19v.output`
+
+```text
+Traceback (most recent call last):
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 533, in _parse_feed
+    return self.__try_parse_feed(url, first_page=first_page, try_index=_try_index)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 570, in __try_parse_feed
+    raise HTTPError(url, try_index, resp.status_code)
+arxiv.HTTPError: Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=cat%3Acs.IR+OR+cat%3Acs.CL&id_list=&sortBy=submittedDate&sortOrder=descending&start=0&max_results=100)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 533, in _parse_feed
+    return self.__try_parse_feed(url, first_page=first_page, try_index=_try_index)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 570, in __try_parse_feed
+    raise HTTPError(url, try_index, resp.status_code)
+arxiv.HTTPError: Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=cat%3Acs.IR+OR+cat%3Acs.CL&id_list=&sortBy=submittedDate&sortOrder=descending&start=0&max_results=100)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 533, in _parse_feed
+    return self.__try_parse_feed(url, first_page=first_page, try_index=_try_index)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 570, in __try_parse_feed
+    raise HTTPError(url, try_index, resp.status_code)
+arxiv.HTTPError: Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=cat%3Acs.IR+OR+cat%3Acs.CL&id_list=&sortBy=submittedDate&sortOrder=descending&start=0&max_results=100)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+    n = ingest(max_results=3, months_back=24)
+  File "/Users/andrewxiao/Documents/projects/Sift/app/ingest/arxiv_client.py", line 63, in ingest
+    for result in fetch_papers(categories, max_results, months_back):
+                  ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/app/ingest/arxiv_client.py", line 47, in fetch_papers
+    for result in _client.results(search):
+                  ~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 492, in _results
+    feed = self._parse_feed(page_url, first_page=True)
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 541, in _parse_feed
+    return self._parse_feed(url, first_page=first_page, _try_index=_try_index + 1)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 541, in _parse_feed
+    return self._parse_feed(url, first_page=first_page, _try_index=_try_index + 1)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 541, in _parse_feed
+    return self._parse_feed(url, first_page=first_page, _try_index=_try_index + 1)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 543, in _parse_feed
+    raise err
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 533, in _parse_feed
+    return self.__try_parse_feed(url, first_page=first_page, try_index=_try_index)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andrewxiao/Documents/projects/Sift/.venv/lib/python3.14/site-packages/arxiv/__init__.py", line 570, in __try_parse_feed
+    raise HTTPError(url, try_index, resp.status_code)
+arxiv.HTTPError: Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=cat%3Acs.IR+OR+cat%3Acs.CL&id_list=&sortBy=submittedDate&sortOrder=descending&start=0&max_results=100)
+
+[exited with code 1]
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:44:57Z)**_
+
+That failure isn't related to the SQL migration — arXiv rate-limited us (HTTP 429) because we just hit it with the full 2,000-paper ingest a few minutes ago and then immediately fired another request. The `arxiv` package's built-in retries all also got 429s since we retried too fast within the same rate-limit window.
+
+Let me wait a bit and verify the raw SQL path with data already in Postgres instead of hitting the API again immediately — that's a cleaner way to confirm the migration itself works.
+
+_**Agent (claude-sonnet-5 2026-08-30 02:45:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify the raw SQL upsert logic works correctly against an existing row without hitting the arXiv API
+
+```bash
+cd /Users/andrewxiao/Documents/projects/Sift
+uv run python -c "
+from app.models.db import get_connection
+from app.ingest.arxiv_client import UPSERT_SQL
+
+conn = get_connection()
+with conn.cursor() as cur:
+    cur.execute('SELECT arxiv_id, title, abstract, authors, categories, published, updated, pdf_url FROM papers LIMIT 1')
+    row = cur.fetchone()
+    cols = ['arxiv_id','title','abstract','authors','categories','published','updated','pdf_url']
+    record = dict(zip(cols, row))
+    cur.execute(UPSERT_SQL, record)
+conn.commit()
+with conn.cursor() as cur:
+    cur.execute('SELECT count(*) FROM papers')
+    print('row count after no-op upsert:', cur.fetchone())
+conn.close()
+"
+```
+
+```text
+row count after no-op upsert: (2000,)
+```
+</details></tool-use>
+
+_**Agent (claude-sonnet-5 2026-08-30 02:45:05Z)**_
+
+The raw SQL upsert logic itself works correctly — round-tripped an existing row through the exact `UPSERT_SQL` statement, conflict-updated it, count stayed at 2,000 as expected (no duplicate, no data loss). The earlier failure was purely arXiv's rate limiter, not our code.
+
+**Status recap:**
+- ✅ Raw SQL migration (`db.py` + `arxiv_client.py`) confirmed working, SQLAlchemy dependency removed
+- ⚠️ Corpus is still the "24 days, not 24 months" version from before — that fix (sampling across the full window) is still pending your go-ahead, and we should space that ingest run out from arXiv a bit given the rate limit we just hit
+
+Want me to go ahead now with the 24-month sampling fix, or wait a few minutes first to be safe with arXiv's rate limit?

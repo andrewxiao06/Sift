@@ -1,39 +1,33 @@
-"""SQLAlchemy engine, session, and the Paper table model."""
+"""Raw SQL database access via psycopg. No ORM by choice."""
 
-from datetime import datetime
-
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, DateTime, String, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+import psycopg
+from pgvector.psycopg import register_vector
 
 from app.config import DATABASE_URL, EMBEDDING_DIM
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
+CREATE_TABLE_SQL = f"""
+CREATE TABLE IF NOT EXISTS papers (
+    id SERIAL PRIMARY KEY,
+    arxiv_id TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    abstract TEXT NOT NULL,
+    authors TEXT[] NOT NULL,
+    categories TEXT[] NOT NULL,
+    published TIMESTAMPTZ NOT NULL,
+    updated TIMESTAMPTZ NOT NULL,
+    pdf_url TEXT NOT NULL,
+    embedding VECTOR({EMBEDDING_DIM})
+);
+"""
 
 
-class Base(DeclarativeBase):
-    pass
-
-
-class Paper(Base):
-    __tablename__ = "papers"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    arxiv_id: Mapped[str] = mapped_column(String, unique=True, index=True)
-    title: Mapped[str] = mapped_column(String)
-    abstract: Mapped[str] = mapped_column(String)
-    authors: Mapped[list[str]] = mapped_column(ARRAY(String))
-    categories: Mapped[list[str]] = mapped_column(ARRAY(String))
-    published: Mapped[datetime] = mapped_column(DateTime)
-    updated: Mapped[datetime] = mapped_column(DateTime)
-    pdf_url: Mapped[str] = mapped_column(String)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+def get_connection() -> psycopg.Connection:
+    conn = psycopg.connect(DATABASE_URL)
+    register_vector(conn)
+    return conn
 
 
 def init_db() -> None:
-    Base.metadata.create_all(engine)
-
-
-def get_session() -> Session:
-    return SessionLocal()
+    with get_connection() as conn:
+        conn.execute(CREATE_TABLE_SQL)
+        conn.commit()
