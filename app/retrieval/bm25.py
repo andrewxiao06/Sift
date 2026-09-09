@@ -3,7 +3,7 @@ from rank_bm25 import BM25Okapi
 from app.models.db import get_connection
 
 
-#best matching 25 documents for relevance. standard
+#best matching 25 documents for relevance based on the query (user prompt)
 
 def load_corpus() -> tuple[list[dict], BM25Okapi]:
     # 1. fetch all papers (id, title, abstract) from the DB — same cursor pattern as before
