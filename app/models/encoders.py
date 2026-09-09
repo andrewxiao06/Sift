@@ -40,6 +40,9 @@ def l2_normalize(embeddings: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.normalize(embeddings, p=2, dim=1)
 
 
+#bi-encode here
+
+
 def embed(texts: list[str]) -> list[list[float]]:
     inputs = tokenizer(
         texts,
