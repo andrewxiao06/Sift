@@ -26,7 +26,7 @@ DEFAULT_TOP_K = 10
 RERANK_TOP_N = 100
 
 # Agent
-AGENT_MODEL = "claude-sonnet-5"
+AGENT_MODEL = "claude-haiku-4-5"
 AGENT_MAX_ITERATIONS = 6
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
