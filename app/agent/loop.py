@@ -1,3 +1,4 @@
+from pathlib import Path
 from time import time
 
 import anthropic
@@ -7,6 +8,9 @@ from app.agent.trace import Trace
 from app.config import AGENT_MAX_ITERATIONS, AGENT_MODEL, ANTHROPIC_API_KEY
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+SYSTEM_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "agent_system_v1.md"
+SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text().strip()
 
 
 def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS) -> dict:
@@ -36,7 +40,13 @@ def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS) -> dict
         #      append it to `messages` as a new user-role message
 
         # loop continues to the next iteration automatically (the for loop)
-        response = client.messages.create(model=AGENT_MODEL, tools=TOOL_DEFINITIONS, messages=messages, max_tokens=5000)
+        response = client.messages.create(
+            model=AGENT_MODEL,
+            system=SYSTEM_PROMPT,
+            tools=TOOL_DEFINITIONS,
+            messages=messages,
+            max_tokens=5000,
+        )
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
