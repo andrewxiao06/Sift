@@ -7,48 +7,20 @@ query set (see [Results](#results)).
 
 ## Architecture
 
-Each box is a real file/module; each arrow is the actual call, request, or SQL that crosses it —
-not a paraphrase.
-
 ```mermaid
-flowchart TD
-    USER[User — terminal or browser]
+flowchart LR
+    Q[User question] --> AGENT[Claude agent]
 
-    USER -->|question string| CLI["main.py<br/>terminal chat loop"]
-    USER -->|"POST /ask {question, model, mode}"| WEB["web/app.js<br/>fetch()"]
-    WEB --> API["app/api/main.py<br/>FastAPI AskRequest handler"]
+    AGENT -->|"search_papers(query)"| BM25[BM25<br/>keyword search]
+    AGENT -->|"search_papers(query)"| DENSE[Dense search<br/>embedding similarity]
 
-    CLI -->|"run_agent(question)"| LOOP
-    API -->|"run_agent(question, model, mode)"| LOOP["app/agent/loop.py<br/>run_agent() — max 6 iterations"]
+    BM25 --> FUSION[RRF fusion]
+    DENSE --> FUSION
+    FUSION --> RERANK[Cross-encoder<br/>rerank]
+    RERANK -->|top papers| AGENT
 
-    LOOP -->|"client.messages.create(model=claude-haiku-4-5,<br/>tools=TOOL_DEFINITIONS)"| ANTHROPIC[["Anthropic API"]]
-    ANTHROPIC -->|"tool_use block"| LOOP
-
-    LOOP -->|"TOOL_DISPATCH[name](**args)"| TOOLS["app/agent/tools.py<br/>search_papers / get_paper /<br/>compare_papers (max 5 ids)"]
-    TOOLS -->|"reranked_search(query, k)"| RERANK["app/retrieval/rerank.py<br/>reranked_search() — cross_encoder.predict()<br/>ms-marco-MiniLM-L-6-v2"]
-    TOOLS -->|"get_paper(arxiv_id) —<br/>SELECT ... WHERE arxiv_id = %s"| DB
-
-    RERANK -->|"hybrid_search(query, pool=100)"| FUSION["app/retrieval/fusion.py<br/>hybrid_search() / reciprocal_rank_fusion(k=60)"]
-
-    FUSION -->|"bm25_search(query, top_k)"| BM25["app/retrieval/bm25.py<br/>BM25Okapi, in-memory index"]
-    FUSION -->|"dense_search(query, top_k)"| DENSE["app/retrieval/dense.py"]
-
-    DENSE -->|"embed([query])"| ENC["app/models/encoders.py<br/>tokenize → forward → mean-pool → normalize"]
-    DENSE -->|"SELECT ... ORDER BY<br/>embedding &lt;=&gt; %s::vector"| DB[("Postgres — papers<br/>id, arxiv_id, title, abstract,<br/>authors, categories, embedding")]
-    BM25 -.loaded once at import.-> DB
-
-    INGEST["app/ingest/arxiv_client.py<br/>ingest()"] -->|"INSERT ... ON CONFLICT<br/>(arxiv_id) DO UPDATE"| DB
-    EMBED["app/ingest/embed_papers.py<br/>embed_and_write_all_embeddings()"] -->|"UPDATE papers<br/>SET embedding = %s"| DB
-    EMBED -->|"embed(abstracts)"| ENC
-
-    QRELS["eval/qrels.jsonl<br/>1,468 graded pairs"] --> RUNEVAL["eval/run_eval.py"]
-    RUNEVAL -->|"calls bm25/dense/hybrid/reranked_search,<br/>times + scores each"| ABLATION[("results/ablation.json")]
-    RUNEVAL --> LAT["eval/bench_latency.py"]
-    LAT --> LATJSON[("results/latency_baseline.json")]
-
-    TASKS["eval/agent_tasks.jsonl<br/>30 tasks"] --> RUNAGENT["eval/run_agent_eval.py"]
-    RUNAGENT -->|"run_agent(question)"| LOOP
-    RUNAGENT --> AGENTRAW[("results/agent_eval_raw.json")]
+    AGENT -->|"more evidence needed?<br/>search again, or compare/get_paper"| AGENT
+    AGENT -->|answer + citations| Q
 ```
 
 ## What it does
