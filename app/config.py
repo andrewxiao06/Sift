@@ -29,4 +29,14 @@ RERANK_TOP_N = 100
 AGENT_MODEL = "claude-haiku-4-5"
 AGENT_MAX_ITERATIONS = 6
 
+# User-selectable via the API. Keys are the public names the frontend sends.
+AGENT_MODELS = {
+    "haiku": "claude-haiku-4-5",
+    "sonnet": "claude-sonnet-5",
+    "opus": "claude-opus-5",
+}
+# fast = fewer iterations (lower latency/tokens, may stop before it's done);
+# detailed = the full default cap.
+AGENT_MODES = {"fast": 3, "detailed": AGENT_MAX_ITERATIONS}
+
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")

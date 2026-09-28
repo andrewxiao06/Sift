@@ -27,3 +27,11 @@ __pycache__/
 # Storyscript
 .specstory/
 
+# Experimental / one-off scripts and their output -- not part of the
+# measured pipeline (see eval/bench_cost.py and eval/bench_latency_cached.py
+# docstrings for why these stay local instead of being committed)
+eval/bench_cost.py
+eval/bench_latency_cached.py
+results/latency_cached.json
+results/cost_estimate.json
+

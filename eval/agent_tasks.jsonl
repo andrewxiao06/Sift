@@ -1,0 +1,30 @@
+{"question": "What is reciprocal rank fusion and how does it combine ranked lists?", "task_type": "lookup", "known_good_papers": ["2608.03860", "2608.07152"]}
+{"question": "How does a cross-encoder differ from a bi-encoder for reranking?", "task_type": "lookup", "known_good_papers": ["2608.09650", "2608.03860"]}
+{"question": "What causes RAG systems to hallucinate, and how can it be reduced?", "task_type": "lookup", "known_good_papers": ["2608.14210", "2608.24977"]}
+{"question": "What is the role of BM25 in hybrid retrieval systems?", "task_type": "lookup", "known_good_papers": ["2608.13004"]}
+{"question": "How does GraphRAG use knowledge graphs to improve retrieval?", "task_type": "lookup", "known_good_papers": ["2608.25123", "2608.16004"]}
+{"question": "What is query-aware admission filtering in vector databases?", "task_type": "lookup", "known_good_papers": ["2608.16043"]}
+{"question": "How do multi-hop RAG systems decide when to stop retrieving?", "task_type": "lookup", "known_good_papers": ["2608.13237"]}
+{"question": "What does an outcome reward model do for text-to-SQL verification?", "task_type": "lookup", "known_good_papers": ["2608.17795"]}
+{"question": "How does madhhab-aware filtering improve retrieval for Islamic jurisprudence?", "task_type": "lookup", "known_good_papers": ["2608.20246"]}
+{"question": "What is the purpose of a deterministic verification layer in an analytics agent?", "task_type": "lookup", "known_good_papers": ["2608.09254"]}
+{"question": "Compare dense retrieval and lexical (BM25) retrieval for named-entity queries.", "task_type": "synthesis", "known_good_papers": []}
+{"question": "Compare graph-based RAG with plain vector-based RAG.", "task_type": "comparison", "known_good_papers": ["2608.07994", "2608.25123"]}
+{"question": "Compare fine-tuned rerankers against off-the-shelf rerankers on a new domain.", "task_type": "comparison", "known_good_papers": ["2608.09650"]}
+{"question": "Compare single-shot RAG against an agent that searches iteratively.", "task_type": "comparison", "known_good_papers": ["2608.22479"]}
+{"question": "Compare LLM-as-judge verification against deterministic rule-based verification.", "task_type": "comparison", "known_good_papers": ["2608.17795", "2608.18158"]}
+{"question": "What is KV cache reuse and why does it help long-context RAG efficiency?", "task_type": "lookup", "known_good_papers": ["2608.07458"]}
+{"question": "What is context interference in multi-turn search agents, and how is it mitigated?", "task_type": "lookup", "known_good_papers": ["2608.10743"]}
+{"question": "How does a Boolean Query Language help structure-aware web retrieval agents?", "task_type": "lookup", "known_good_papers": ["2608.02751"]}
+{"question": "What is the rank-deviation quality metric and how does it differ from nDCG?", "task_type": "lookup", "known_good_papers": ["2608.25318"]}
+{"question": "How does test-time scaling help correct difficult text-to-SQL queries?", "task_type": "lookup", "known_good_papers": ["2608.07213"]}
+{"question": "What does the RAG Collapse phenomenon describe?", "task_type": "lookup", "known_good_papers": ["2608.22118"]}
+{"question": "How can an agent verify whether retrieved evidence actually supports its answer?", "task_type": "lookup", "known_good_papers": ["2608.24667", "2608.26379"]}
+{"question": "What is the tradeoff between rerank depth and latency in a retrieval pipeline?", "task_type": "synthesis", "known_good_papers": ["2608.08237"]}
+{"question": "How does query-difficulty-gated fusion combine multiple reasoning views for retrieval?", "task_type": "lookup", "known_good_papers": ["2608.08940"]}
+{"question": "What is a structural abstention approach for AI systems whose answers are treated as fact?", "task_type": "lookup", "known_good_papers": ["2608.13926"]}
+{"question": "How does an agent decompose a complex multi-hop question into sub-questions?", "task_type": "lookup", "known_good_papers": ["2608.13160", "2608.04444"]}
+{"question": "What is the benefit of session-aware rank fusion in agent-controlled chat search?", "task_type": "lookup", "known_good_papers": ["2608.12888"]}
+{"question": "How does private dense retrieval protect queries while still returning results?", "task_type": "lookup", "known_good_papers": ["2608.25735"]}
+{"question": "What role does citation grounding play in scientific question answering benchmarks?", "task_type": "lookup", "known_good_papers": ["2608.07370"]}
+{"question": "How does an agent detect and recover from a failed or empty search?", "task_type": "lookup", "known_good_papers": ["2608.19303", "2608.11772"]}

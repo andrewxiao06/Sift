@@ -13,12 +13,15 @@ SYSTEM_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "agent_sy
 SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text().strip()
 
 
-def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS) -> dict:
+def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS, model: str = AGENT_MODEL) -> dict:
     """Runs the agent loop for one question. Returns {"answer": str, "trace": [...]}."""
+
+    run_start = time()
 
     messages = [{"role": "user", "content": question}]
     trace = Trace()
     tool_failure_counts = {}
+    total_tokens = 0
 
     for iteration in range(max_iterations):
         # 1. call client.messages.create(model=AGENT_MODEL, tools=TOOL_DEFINITIONS,
@@ -41,17 +44,24 @@ def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS) -> dict
 
         # loop continues to the next iteration automatically (the for loop)
         response = client.messages.create(
-            model=AGENT_MODEL,
+            model=model,
             system=SYSTEM_PROMPT,
             tools=TOOL_DEFINITIONS,
             messages=messages,
             max_tokens=5000,
         )
         messages.append({"role": "assistant", "content": response.content})
+        total_tokens += response.usage.input_tokens + response.usage.output_tokens
 
         if response.stop_reason != "tool_use":
             answer_text = "".join(block.text for block in response.content if block.type == "text")
-            return {"answer": answer_text, "trace": trace.records}
+            return {
+                "answer": answer_text,
+                "trace": trace.records,
+                "total_tokens": total_tokens,
+                "total_latency": time() - run_start,
+                "iterations_used": iteration + 1,
+            }
 
         tool_use_blocks = [block for block in response.content if block.type == "tool_use"]
         tool_result_blocks = []
@@ -111,4 +121,11 @@ def run_agent(question: str, max_iterations: int = AGENT_MAX_ITERATIONS) -> dict
     # decide what "partial results" means here: return whatever you have,
     # clearly marked as incomplete, never silently pretend it succeeded
     
-    return {"answer": None, "trace": trace.records, "incomplete": True}
+    return {
+        "answer": None,
+        "trace": trace.records,
+        "incomplete": True,
+        "total_tokens": total_tokens,
+        "total_latency": time() - run_start,
+        "iterations_used": max_iterations,
+    }

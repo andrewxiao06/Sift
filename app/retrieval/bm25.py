@@ -14,7 +14,7 @@ def load_corpus() -> tuple[list[dict], BM25Okapi]:
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, title, abstract FROM papers")
+    cursor.execute("SELECT id, arxiv_id, title, abstract FROM papers")
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -22,7 +22,7 @@ def load_corpus() -> tuple[list[dict], BM25Okapi]:
     papers = []
     tokenized = []
     for r in rows:
-        paper = {"id": r[0], "title": r[1], "abstract": r[2]}
+        paper = {"id": r[0], "arxiv_id": r[1], "title": r[2], "abstract": r[3]}
         tokens = paper["abstract"].lower().split()
         papers.append(paper)
         tokenized.append(tokens)

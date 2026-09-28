@@ -1,0 +1,365 @@
+:root {
+  --bg: #0f1117;
+  --panel: #171a23;
+  --panel-2: #1e222d;
+  --border: #2a2f3d;
+  --text: #e8eaf0;
+  --text-dim: #9198ac;
+  --accent: #7c9eff;
+  --accent-soft: #7c9eff33;
+  --cited: #6ee7b7;
+  --found: #4b5163;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.header h1 {
+  font-size: 2.4rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+  background: linear-gradient(135deg, #7c9eff, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.header p {
+  color: var(--text-dim);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.ask-form {
+  display: flex;
+  gap: 10px;
+  max-width: 640px;
+  margin: 0 auto 24px;
+}
+
+#question-input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 14px 18px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+#question-input:focus {
+  border-color: var(--accent);
+}
+
+#model-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--panel);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%239198ac' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 14px 34px 14px 18px;
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+#model-select:focus {
+  border-color: var(--accent);
+}
+
+#model-select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+#ask-button {
+  background: var(--accent);
+  color: #0f1117;
+  border: none;
+  border-radius: var(--radius);
+  padding: 14px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+#ask-button:hover {
+  opacity: 0.9;
+}
+
+#ask-button:active {
+  transform: scale(0.97);
+}
+
+#ask-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  text-align: center;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  font-size: 0.95rem;
+}
+
+.status.error {
+  color: #f87171;
+}
+
+.history-nav {
+  max-width: 640px;
+  margin: 0 auto 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+
+.history-nav-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.history-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.history-nav button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.history-nav button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+#history {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.entry {
+  animation: entry-in 0.3s ease;
+}
+
+@keyframes entry-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.entry-question {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.answer-panel,
+.map-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.answer-panel h2,
+.map-panel h2 {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.answer-text {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.answer-text p {
+  margin: 0 0 12px;
+}
+
+.answer-text strong {
+  color: #fff;
+}
+
+.answer-text code {
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.88em;
+}
+
+.answer-text ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.meta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.map-legend {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.dot.cited {
+  background: var(--cited);
+}
+
+.dot.found {
+  background: var(--found);
+}
+
+#mindmap {
+  width: 100%;
+  height: 420px;
+  overflow: visible;
+}
+
+.node-circle {
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.node-label {
+  font-size: 10px;
+  fill: var(--text-dim);
+  pointer-events: none;
+}
+
+.node-label.center {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.edge {
+  stroke: var(--border);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.paper-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paper-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.paper-list a {
+  color: var(--text-dim);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.paper-list a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.paper-list li.cited a {
+  color: var(--text);
+}

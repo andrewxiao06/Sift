@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sift</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Sift</h1>
+      <p>Ask a research question. Get an answer grounded in real papers.</p>
+    </header>
+
+    <form id="ask-form" class="ask-form">
+      <input
+        id="question-input"
+        type="text"
+        placeholder="e.g. What is reciprocal rank fusion?"
+        autocomplete="off"
+      />
+      <select id="model-select">
+        <option value="haiku">Haiku</option>
+        <option value="sonnet">Sonnet</option>
+        <option value="opus">Opus</option>
+      </select>
+      <button type="submit" id="ask-button">Ask</button>
+    </form>
+
+    <div id="status" class="status" hidden></div>
+
+    <nav id="history-nav" class="history-nav" hidden>
+      <span class="history-nav-label">History</span>
+      <ul id="history-nav-list"></ul>
+    </nav>
+
+    <div id="history"></div>
+  </div>
+
+  <template id="entry-template">
+    <div class="entry">
+      <div class="entry-question"></div>
+      <main class="main">
+        <section class="answer-panel">
+          <h2>Answer</h2>
+          <div class="answer-text"></div>
+          <div class="meta"></div>
+        </section>
+
+        <section class="map-panel">
+          <h2>Papers explored</h2>
+          <p class="map-legend">
+            <span class="dot cited"></span> cited in answer
+            <span class="dot found"></span> found, not cited
+          </p>
+          <svg class="mindmap" viewBox="0 0 600 500"></svg>
+          <ul class="paper-list"></ul>
+        </section>
+      </main>
+    </div>
+  </template>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
